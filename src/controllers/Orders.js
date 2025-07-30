@@ -1,97 +1,106 @@
-const express = require('express');
-const mongoose = require('mongoose');
 const Order = require('../Model/Orders');
-const {StatusCodes} = require('http-status-codes')
+const Product = require('../Model/Products');
+const { StatusCodes } = require('http-status-codes');
 
-const createOrder = async(req,res)=>{
-    const{
-        product,
-        price,
-        quantity,
-        orderDate,
-    }= req.body
-    
-    if(!product|| !price || !quantity || !orderDate){
-        return res.status(StatusCodes.BAD_REQUEST).json({message: 'Please fill all fields'})
+// Create a new order
+const createOrder = async (req, res) => {
+    const { orderItems, shippingAddress, paymentMethod } = req.body;
+
+    if (!orderItems || orderItems.length === 0) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "No order items" });
     }
 
-    //create order
+    let totalPrice = 0;
+
+    for (const item of orderItems) {
+        const product = await Product.findById(item.product);
+        if (!product) {
+            return res.status(StatusCodes.NOT_FOUND).json({ message: `Product not found: ${item.product}` });
+        }
+
+        totalPrice += product.price * item.qty;
+    }
+
     const order = await Order.create({
-        // user: req.user._id,
-        product,
-        price,
-        quantity,
-        orderDate,
+        user: req.user.userId,
+        orderItems,
+        shippingAddress,
+        paymentMethod,
+        totalPrice
     });
 
-    res.status(StatusCodes.CREATED).json(order)
-}
+    res.status(StatusCodes.CREATED).json({ order });
+};
 
-//Get Orders
-const getAllOrders = async(req,res)=>{
-    try{
-        const order = await Order.find()
-        res.status(StatusCodes.OK).json(Order)
-    }catch(error){
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: 'Failed to retrieve orders',
-            error: error.message
-        });
-    }
-}
+// Get all orders for a logged-in user
+const getUserOrders = async (req, res) => {
+    const orders = await Order.find({ user: req.user.userId }).sort('-createdAt');
+    res.status(StatusCodes.OK).json({ count: orders.length, orders });
+};
 
-const getOneOrder = async(req,res)=>{
-    try{
-        const order = await Order.findOne({_id: req.params._id})
-        res.status(StatusCodes.OK).json(order)
-    }
-    catch(error) {
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: 'Failed to retrieve orders',
-            error: error.message
-        });
-    }
-}
-//delete Order
-const deleteOrder = async(req,res)=>{
-    const order = await Order.findOne({name: req.params.name})
-    if (!order){
-        res.status(StatusCodes.BAD_REQUEST).json({message: "order not found"})
-    }
-    await Order.findOneAndDelete({name: req.params.name});
-    res.status(StatusCodes.OK).json({message: "order deleted succesfully"})
-}
+// Get single order (admin or user)
+const getSingleOrder = async (req, res) => {
+    const { id: orderId } = req.params;
 
-//update Order
-const UpdateOrder = async(req,res)=>{
-    const{
-        product,
-        price,
-        quantity,
-        orderDate,
-    }=req.body;
+    const order = await Order.findById(orderId).populate('user', 'name email');
 
-    const order = await Order.findOne({_id: req.params._id})
-    if (!order){
-        res.status(StatusCodes.BAD_REQUEST).json({message: "Order not found"})
+    if (!order) {
+        return res.status(StatusCodes.NOT_FOUND).json({ message: "Order not found" });
     }
 
-    //Update Order
-    const updatedOrder = await Order.findOneAndUpdate({_id: req.params._id},
-        {
-            product,
-            price,
-            quantity,
-            orderDate,
-        }
-    )
-    res.status(StatusCodes.OK).json({message: "order updated succesfully"})
-}
+    // Only allow owner or admin to access
+    if (req.user.userId !== order.user._id.toString() && req.user.role !== 'admin') {
+        return res.status(StatusCodes.UNAUTHORIZED).json({ message: "Not authorized to view this order" });
+    }
+
+    res.status(StatusCodes.OK).json({ order });
+};
+
+// Get all orders (admin only)
+const getAllOrders = async (req, res) => {
+    const orders = await Order.find().populate('user', 'name email').sort('-createdAt');
+    res.status(StatusCodes.OK).json({ count: orders.length, orders });
+};
+
+// Mark order as paid
+const updateOrderToPaid = async (req, res) => {
+    const { id: orderId } = req.params;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+        return res.status(StatusCodes.NOT_FOUND).json({ message: "Order not found" });
+    }
+
+    order.isPaid = true;
+    order.paidAt = Date.now();
+
+    await order.save();
+
+    res.status(StatusCodes.OK).json({ message: "Order marked as paid", order });
+};
+
+// Mark order as delivered (admin only)
+const updateOrderToDelivered = async (req, res) => {
+    const { id: orderId } = req.params;
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+        return res.status(StatusCodes.NOT_FOUND).json({ message: "Order not found" });
+    }
+
+    order.isDelivered = true;
+    order.deliveredAt = Date.now();
+
+    await order.save();
+
+    res.status(StatusCodes.OK).json({ message: "Order marked as delivered", order });
+};
 
 module.exports = {
     createOrder,
+    getUserOrders,
+    getSingleOrder,
     getAllOrders,
-    getOneOrder,
-    deleteOrder,
-    UpdateOrder
-}
+    updateOrderToPaid,
+    updateOrderToDelivered
+};

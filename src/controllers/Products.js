@@ -50,6 +50,15 @@ const getOneProduct = async(req,res)=>{
             error: error.message
         });
     }
+};
+
+const getAllProductsByCategory = async(req,res)=>{
+    try {
+        const product = await Product.find({category:req.params.category})
+        res.status(StatusCodes.OK).json(product)
+    } catch (error) {
+        res.status(StatusCodes.BAD_REQUEST).json({message: "failed to retrieve product"})
+    }
 }
 //delete Product
 const deleteProduct = async(req,res)=>{
@@ -91,5 +100,6 @@ module.exports = {
     getAllProducts,
     getOneProduct,
     deleteProduct,
-    UpdateProduct
+    UpdateProduct,
+    getAllProductsByCategory
 }

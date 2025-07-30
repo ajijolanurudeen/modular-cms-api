@@ -1,4 +1,5 @@
 const express  = require('express');
+const cookie_parser = require('cookie-parser')
 const dotenv = require('dotenv').config();
 const ConnectDB = require('./DB/connect')
 const UserRoutes = require('./routes/userRoute')
@@ -9,6 +10,7 @@ const mongoose = require('mongoose')
 const app = express();
 
 app.use(express.json());
+app.use(cookie_parser(process.env.JWT_SECRET))
 app.use('/api/user',UserRoutes);
 app.use('/api/auth',authRoutes);
 app.use('/api/products',ProductRoutes)
